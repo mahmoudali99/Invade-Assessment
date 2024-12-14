@@ -46,9 +46,10 @@
 </template>
 
 <script setup>
+import axios from 'axios';
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus } from 'lucide-vue-next'
+import { CloudCog, Plus } from 'lucide-vue-next'
 import NavBar from './NavBar.vue'
 import TaskCard from './TaskCard.vue'
 import TaskPopup from './TaskPopup.vue'
@@ -63,63 +64,151 @@ const selectedTask = ref(null)
 const showAddTaskForm = ref(false)
 const showDeletedTasks = ref(false)
 const editingTask = ref(null)
-const categories = ref(['Work', 'Personal', 'Shopping', 'Health'])
+const categories = ref([])
+
+import { onMounted } from 'vue';
+
+onMounted(async () => {
+  await fetchTasks();
+  await fetchCategories();
+  await fetchDeletedTasks();
+});
+const getAuthTokenFromCookies = () => {
+  const cookieString = document.cookie;
+  const match = cookieString.match(/(^| )auth_token=([^;]+)/);
+
+  if (match) {
+    console.log(match[2]);
+    return match[2]; // Return the value of the auth_token
+  }
+
+  return null; // Return null if the token is not found
+};
+
+const fetchTasks = async () => {
+  try {
+    const response = await axios.get('/tasks');
+    tasks.value = response.data.data;  // Adjust to match the paginated structure
+  } catch (error) {
+    console.error("Error fetching tasks:", error);
+  }
+};
+
+const fetchCategories = async () => {
+  try {
+    const response = await axios.get('/categories');
+    categories.value = response.data.data;  // Adjust to match the categories structure
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+  }
+};
+
+const fetchDeletedTasks = async () => {
+  try {
+    const response = await axios.get('/tasks/deleted');
+    deletedTasks.value = response.data.data;  // Adjust to match the paginated structure
+  } catch (error) {
+    console.error("Error fetching deleted tasks:", error);
+  }
+};
 
 const handleLogout = () => {
-  router.push('/')
-}
+  if (confirm('Are you sure you want to log out?')) {
+    // Clear the auth_token cookie
+    document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;';
+    
+    // Navigate to the home page
+    router.push('/');
+  }
+};
 
-const addTask = (newTask) => {
-  tasks.value.push({ ...newTask, id: Date.now(), status: 'pending' })
-}
+const addTask = async (newTask) => {
+  try {
+    const response = await axios.post('/tasks', newTask);
+    tasks.value.push(response.data.task); // Add the new task to the local tasks list
+  } catch (error) {
+    console.error("Error adding task:", error);
+  }
+};
 
 const openEditForm = (taskId) => {
-  const taskToEdit = tasks.value.find(task => task.id === taskId)
+  const taskToEdit = tasks.value.find(task => task.id === taskId);
   if (taskToEdit) {
-    editingTask.value = { ...taskToEdit }
+    editingTask.value = { ...taskToEdit };
   }
-}
+};
 
 const saveEditedTask = (updatedTask) => {
-  const index = tasks.value.findIndex(task => task.id === updatedTask.id)
+  const index = tasks.value.findIndex(task => task.id === updatedTask.id);
   if (index !== -1) {
-    tasks.value[index] = updatedTask
+    tasks.value[index] = updatedTask;
   }
-  editingTask.value = null
-}
+  editingTask.value = null;
+};
 
-const deleteTask = (taskId) => {
-  const taskIndex = tasks.value.findIndex(task => task.id === taskId)
-  if (taskIndex !== -1) {
-    const deletedTask = tasks.value.splice(taskIndex, 1)[0]
-    deletedTasks.value.push(deletedTask)
+const deleteTask = async (taskId) => {
+  try {
+    await axios.delete(`/tasks/${taskId}`);
+    const taskIndex = tasks.value.findIndex(task => task.id === taskId);
+    if (taskIndex !== -1) {
+      const deletedTask = tasks.value.splice(taskIndex, 1)[0];
+      deletedTasks.value.push(deletedTask); // Move the task to the deleted list
+    }
+  } catch (error) {
+    console.error("Error deleting task:", error);
   }
-}
+};
 
-const toggleTaskStatus = (taskId) => {
-  const task = tasks.value.find(task => task.id === taskId)
-  if (task) {
-    task.status = task.status === 'completed' ? 'pending' : 'completed'
+const toggleTaskStatus = async (taskId) => {
+  try {
+    const response = await axios.put(`/tasks/${taskId}/toggle-status`);
+    const task = tasks.value.find(task => task.id === taskId);
+    if (task) {
+      task.status = response.data.status; // Update status locally
+    }
+  } catch (error) {
+    console.error("Error toggling task status:", error);
   }
-}
+};
 
 const openTaskDetails = (task) => {
-  selectedTask.value = task
-}
+  selectedTask.value = task;
+};
 
-const restoreTask = (taskId) => {
-  const taskIndex = deletedTasks.value.findIndex(task => task.id === taskId)
-  if (taskIndex !== -1) {
-    const restoredTask = deletedTasks.value.splice(taskIndex, 1)[0]
-    tasks.value.push(restoredTask)
+const restoreTask = async (taskId) => {
+  try {
+    const response = await axios.put(`/tasks/${taskId}/restore`);
+    const taskIndex = deletedTasks.value.findIndex(task => task.id === taskId);
+    if (taskIndex !== -1) {
+      const restoredTask = deletedTasks.value.splice(taskIndex, 1)[0];
+      tasks.value.push(restoredTask); // Restore task to the main list
+    }
+  } catch (error) {
+    console.error("Error restoring task:", error);
   }
-}
+};
 
-const addCategory = (newCategory) => {
-  if (!categories.value.includes(newCategory)) {
-    categories.value.push(newCategory)
+const addCategory = async (newCategory) => {
+  try {
+    // Get the token from cookies
+    const token = getAuthTokenFromCookies();
+    console.log(token);
+    if (!token) {
+      throw new Error('Token is missing or expired.');
+    }
+
+    // Send the API request with the token in the Authorization header
+    const response = await axios.post('/categories', { title: newCategory }, {
+      headers: {
+        'Authorization': `Bearer ${token}`, // Attach the token
+      }
+    });
+
+    categories.value.push(response.data.category); // Add to local categories list
+  } catch (error) {
+    console.error("Error adding category:", error.response?.data?.message || error.message);
   }
-}
+};
 </script>
 
 <style scoped>
