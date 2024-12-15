@@ -3,22 +3,54 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Task;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class TaskController extends Controller
 {
     public function getAllTasks(Request $request)
-    {
-        // Get the authenticated user
-        $user = $request->user();
+{
+    // Get the authenticated user
+    $user = $request->user();
+    
+    // Retrieve request parameters
+    $search = $request->input('search');
+    $sort_by = $request->input('sort_by', 'created_at'); // Default to 'created_at'
+    $sort_order = $request->input('sort_order', 'desc'); // Default to 'desc'
+    $categories = $request->input('categories', []);
+    $statuses = $request->input('statuses', []);
+    
+    // Build the query
+    $query = Task::where('userId', $user->id)
+                 ->where('status', '!=', 'deleted');
 
-        // Retrieve tasks for the authenticated user, excluding deleted ones
-        $tasks = Task::where('userId', $user->id) // assuming 'user_id' column is used for the relationship
-                     ->where('status', '!=', 'deleted')
-                     ->paginate(10);
-
-        return response()->json($tasks);
+    // Apply search filter
+    if (!empty($search)) {
+        $query->where('title', 'like', "%{$search}%") // Adjust 'title' to your column name
+              ->orWhere('description', 'like', "%{$search}%");
     }
+
+    // Apply categories filter
+    if (!empty($categories)) {
+        $query->whereIn('categoryId', $categories); // Adjust 'category_id' to your column name
+    }
+
+    // Apply statuses filter
+    if (!empty($statuses)) {
+        $query->whereIn('status', $statuses);
+    }
+
+    // Apply sorting
+    $query->orderBy($sort_by, $sort_order);
+
+    // Paginate results
+    $tasks = $query->paginate(10);
+
+
+    // Return response
+    return response()->json($tasks);
+}
+
 
     public function addTask(Request $request)
     {
@@ -26,6 +58,15 @@ class TaskController extends Controller
             'categoryId' => 'required|exists:categories,id',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'dueDate' => [
+            'required',
+            'date',
+            function ($attribute, $value, $fail) {
+                if (Carbon::parse($value)->isPast()) {
+                    $fail('The due date must be a future date.');
+                }
+            },
+        ],
         ]);
 
         $task = Task::create([

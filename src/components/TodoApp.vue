@@ -1,6 +1,68 @@
 <template>
   <div class="todo-app" @scroll="handleScroll" style="overflow-y: auto; height: 100vh;">
     <NavBar @logout="handleLogout" @openDeletedTasks="showDeletedTasks = true" />
+    <div class="actions-bar">
+      <div class="search-bar">
+        <input 
+          v-model="searchQuery" 
+          type="text" 
+          placeholder="Search tasks..." 
+          class="search-input"
+          @keyup.enter="performSearch"
+        >
+      </div>
+      
+      <div class="sort-options">
+        <select v-model="sortBy" class="sort-select">
+          <option value="title">Sort by Title</option>
+          <option value="dueDate">Sort by Due Date</option>
+        </select>
+        <button @click="toggleSortOrder" class="sort-order-btn">
+          <ArrowUp v-if="sortOrder === 'asc'" class="icon" />
+          <ArrowDown v-else class="icon" />
+        </button>
+      </div>
+      
+      <div class="filter-options">
+        <button @click="toggleCategoryFilter" class="filter-btn">
+          Filter by Category
+          <ChevronDown class="icon" />
+        </button>
+        <div v-if="showCategoryFilter" class="filter-dropdown">
+          <label v-for="category in categories" :key="category.id" class="filter-option">
+            <input 
+              type="checkbox" 
+              :value="category.id" 
+              v-model="selectedCategories"
+            >
+            {{ category.title }}
+          </label>
+        </div>
+        
+        <button @click="toggleStatusFilter" class="filter-btn">
+          Filter by Status
+          <ChevronDown class="icon" />
+        </button>
+        <div v-if="showStatusFilter" class="filter-dropdown">
+          <label class="filter-option">
+            <input 
+              type="checkbox" 
+              value="completed" 
+              v-model="selectedStatuses"
+            >
+            Completed
+          </label>
+          <label class="filter-option">
+            <input 
+              type="checkbox" 
+              value="pending" 
+              v-model="selectedStatuses"
+            >
+            Pending
+          </label>
+        </div>
+      </div>
+    </div>
     <div class="task-list">
       <TaskCard v-for="task in tasks" :key="task.id" :task="task" @edit="openEditForm" @delete="deleteTask"
         @toggle="toggleTaskStatus" @open="openTaskDetails" />
@@ -20,15 +82,16 @@
 
 <script setup>
 import axios from 'axios';
-import { ref } from 'vue'
+import { ref , computed, watch} from 'vue'
 import { useRouter } from 'vue-router'
-import { CloudCog, Plus } from 'lucide-vue-next'
+import { CloudCog, Plus, ArrowUp, ArrowDown, ChevronDown } from 'lucide-vue-next'
 import NavBar from './NavBar.vue'
 import TaskCard from './TaskCard.vue'
 import TaskPopup from './TaskPopup.vue'
 import AddTaskForm from './AddTaskForm.vue'
 import EditTaskForm from './EditTaskForm.vue'
 import DeletedTasks from './DeletedTasks.vue'
+import { onMounted } from 'vue';
 
 const router = useRouter();
 const tasks = ref([]);
@@ -47,7 +110,13 @@ const totalPagesDeletedTasks = ref(null);
 const isLoadingDeletedTasks = ref(false);
 const hasMoreDeletedTasks = ref(true);
 
-import { onMounted } from 'vue';
+const searchQuery = ref('')
+const sortBy = ref('title')
+const sortOrder = ref('asc')
+const showCategoryFilter = ref(false)
+const showStatusFilter = ref(false)
+const selectedCategories = ref([])
+const selectedStatuses = ref([])
 
 onMounted(async () => {
   await fetchTasks();
@@ -59,14 +128,13 @@ const getAuthTokenFromCookies = () => {
   const match = cookieString.match(/(^| )auth_token=([^;]+)/);
 
   if (match) {
-    console.log(match[2]);
     return match[2]; // Return the value of the auth_token
   }
 
   return null; // Return null if the token is not found
 };
 
-const fetchTasks = async () => {
+const fetchTasks = async (page = 1) => {
   if (isLoading.value || !hasMoreTasks.value) return;
 
   try {
@@ -74,16 +142,27 @@ const fetchTasks = async () => {
     const token = getAuthTokenFromCookies();
     if (!token) throw new Error('Token is missing or expired.');
 
-    const response = await axios.get(`/tasks?page=${currentPage.value}`, {
+    const response = await axios.get('/tasks', {
       headers: { Authorization: `Bearer ${token}` },
+      params: {
+        page,
+        search: searchQuery.value,
+        sort_by: sortBy.value,
+        sort_order: sortOrder.value,
+        categories: selectedCategories.value,
+        statuses: selectedStatuses.value,
+      },
     });
-
-    tasks.value = [...tasks.value, ...response.data.data];
+    if (page === 1) {
+      tasks.value = response.data.data;
+    } else {
+      tasks.value = [...tasks.value, ...response.data.data];
+    }
     totalPages.value = response.data.last_page;
 
-    if (currentPage.value >= totalPages.value) hasMoreTasks.value = false;
+    if (page >= totalPages.value) hasMoreTasks.value = false;
 
-    currentPage.value++;
+    currentPage.value = page;
   } catch (error) {
     console.error('Error fetching tasks:', error);
   } finally {
@@ -94,7 +173,7 @@ const fetchTasks = async () => {
 const handleScroll = (event) => {
   const target = event.target;
   if (target.scrollHeight - target.scrollTop <= target.clientHeight + 100) {
-    fetchTasks();
+    fetchTasks(currentPage.value + 1);
   }
 };
 
@@ -103,7 +182,6 @@ const fetchCategories = async () => {
 
     const response = await axios.get('/categories',);
     categories.value = response.data.categories;
-    console.log(categories.value);
     // Adjust to match the categories structure
   } catch (error) {
     console.error("Error fetching categories:", error);
@@ -154,19 +232,28 @@ const addTask = async (newTask) => {
     if (!token) {
       throw new Error('Token is missing or expired.');
     }
-    console.log(newTask);
-    // Send the API request with the token in the Authorization header
-    const response = await axios.post('/tasks',
-      {
-        title: newTask.title, categoryId: newTask.categoryId, description: newTask.description, dueDate: newTask.dueDate
 
-      },);
-      tasks.value.push(response.data.task);
-    fetchTasks();
+    const response = await axios.post('/tasks', {
+      title: newTask.title,
+      categoryId: newTask.categoryId,
+      description: newTask.description,
+      dueDate: newTask.dueDate,
+    });
+
+    tasks.value.push(response.data.task);
+    fetchTasks(); // Refresh the task list
   } catch (error) {
-    console.error("Error adding task:", error);
+    if (error.response && error.response.status === 422) {
+      // Display validation errors
+      console.error("Validation error:", error.response.data.errors);
+// Show the first error for 'dueDate'
+    } else {
+      console.error("Error adding task:", error);
+      alert('An unexpected error occurred.');
+    }
   }
 };
+
 
 const openEditForm = (taskId) => {
   const taskToEdit = tasks.value.find(task => task.id === taskId);
@@ -263,6 +350,41 @@ const addCategory = async (newCategory) => {
     console.error("Error adding category:", error.response?.data?.message || error.message);
   }
 };
+
+
+
+const toggleSortOrder = () => {
+  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+  performSearch();
+};
+
+const toggleCategoryFilter = () => {
+  showCategoryFilter.value = !showCategoryFilter.value;
+  if (showCategoryFilter.value) {
+    showStatusFilter.value = false;
+  }
+  performSearch();
+};
+
+const toggleStatusFilter = () => {
+  showStatusFilter.value = !showStatusFilter.value;
+  if (showStatusFilter.value) {
+    showCategoryFilter.value = false;
+  }
+  performSearch();
+};
+
+const performSearch = () => {
+  currentPage.value = 1;
+  hasMoreTasks.value = true;
+  tasks.value = [];
+  fetchTasks(1);
+};
+
+watch(sortBy, () => performSearch());
+watch(selectedCategories, () => performSearch());
+watch(selectedStatuses, () => performSearch());
+
 </script>
 
 <style scoped>
@@ -270,6 +392,60 @@ const addCategory = async (newCategory) => {
   max-width: 800px;
   margin: 0 auto;
   padding: 20px;
+}
+
+.actions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.search-bar {
+  flex-grow: 1;
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.sort-options, .filter-options {
+  display: flex;
+  align-items: center;
+}
+
+.sort-select, .filter-btn {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: white;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.sort-order-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.filter-dropdown {
+  position: absolute;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px;
+  z-index: 10;
+}
+
+.filter-option {
+  display: block;
+  margin-bottom: 4px;
 }
 
 .task-list {
@@ -303,7 +479,8 @@ const addCategory = async (newCategory) => {
 }
 
 .icon {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 </style>
+

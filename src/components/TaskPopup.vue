@@ -4,6 +4,7 @@
         <h2>{{ task.title }}</h2>
         <p><strong>Due Date:</strong> {{ task.dueDate }}</p>
         <p><strong>Status:</strong> {{ task.status }}</p>
+        <p><strong>Category:</strong> {{ task.categoryTitle }}</p>
         <p><strong>Description:</strong></p>
         <p>{{ task.description }}</p>
         <button class="close-button" @click="$emit('close')">Close</button>

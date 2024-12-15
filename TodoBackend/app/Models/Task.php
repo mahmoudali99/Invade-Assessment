@@ -17,7 +17,7 @@ class Task extends Model
         'dueDate',
         'userId',
     ];
-    
+    protected $appends = ['categoryTitle'];
 
     public function user()
     {
@@ -32,4 +32,9 @@ class Task extends Model
     {
         return $value ? Carbon::parse($value)->toDateString() : null;
     }
+    public function getCategoryTitleAttribute()
+{
+    return $this->category ? $this->category->title : null;
+}
+
 }

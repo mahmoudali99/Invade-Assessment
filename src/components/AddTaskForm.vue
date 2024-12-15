@@ -35,7 +35,8 @@
       </div>
       <div class="form-group">
         <label for="dueDate">Due Date</label>
-        <input id="dueDate" v-model="newTask.dueDate" type="date" required>
+        <input id="dueDate" v-model="newTask.dueDate" type="date" :min="new Date().toISOString().split('T')[0]" required>
+        
       </div>
       <div class="form-actions">
         <button type="button" class="cancel-button" @click="$emit('close')">Cancel</button>
