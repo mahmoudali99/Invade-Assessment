@@ -1,8 +1,10 @@
 <?php
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Carbon\Carbon;
 
 class Task extends Model
 {
@@ -12,8 +14,10 @@ class Task extends Model
         'title',
         'description',
         'status',
-        'userId', 
+        'dueDate',
+        'userId',
     ];
+    
 
     public function user()
     {
@@ -23,5 +27,9 @@ class Task extends Model
     public function category()
     {
         return $this->belongsTo(Category::class, 'categoryId');
+    }
+    public function getDueDateAttribute($value)
+    {
+        return $value ? Carbon::parse($value)->toDateString() : null;
     }
 }

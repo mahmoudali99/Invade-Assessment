@@ -9,10 +9,10 @@
       <div class="form-group category-group">
         <label for="category">Category</label>
         <div class="category-input-group">
-          <select id="category" v-model="newTask.category">
+          <select id="category" v-model="newTask.categoryId">
             <option value="">Select a category</option>
-            <option v-for="category in categories" :key="category" :value="category">
-              {{ category }}
+            <option v-for="category in categories" :key="category.id" :value="category.id">
+              {{ category.title }}
             </option>
           </select>
           <button type="button" class="icon-button" @click="showAddCategory = true">

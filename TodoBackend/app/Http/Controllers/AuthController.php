@@ -5,11 +5,13 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
     public function signup(Request $request)
-    {
+{
+    try {
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|unique:users',
@@ -24,10 +26,25 @@ class AuthController extends Controller
             'password' => Hash::make($request->password),
         ]);
 
-        $token = $user->createToken('API Token');
+        if (!$user) {
+            return response()->json(['message' => 'User registration failed'], 500);
+        }
 
-        return response()->json(['message' => 'User registered successfully!', 'user' => $user , 'token' => $token], 201);
+        $token = $user->createToken('token');
+
+        return response()->json([
+            'message' => 'User registered successfully!',
+            'user' => $user,
+            'token' => $token->plainTextToken
+        ], 200);
+
+    } catch (ValidationException $e) {
+        return response()->json([
+            'message' => 'Validation Error',
+            'errors' => $e->errors(),
+        ], 422);
     }
+}
 
     public function login(Request $request)
     {
@@ -41,17 +58,17 @@ class AuthController extends Controller
 
         // Attempt login
         if (Auth::attempt([$fieldType => $request->login, 'password' => $request->password])) {
-            $user = User::where($fieldType, $request->login)->first();
-        
+
+            $user = auth()->user();
             if ($user) {
                 // Generate a token
-                $token = $user->createToken('API Token');
+                $token = $user->createToken('token');
         
                 // Return the response with user and token
                 return response()->json([
                     'message' => 'Login successful',
                     'user' => $user,
-                    'token' => $token, // Return the plain text token here
+                    'token' => $token->plainTextToken, // Return the plain text token here
                 ], 200);
             }
         }

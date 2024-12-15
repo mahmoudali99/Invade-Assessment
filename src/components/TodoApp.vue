@@ -1,47 +1,20 @@
 <template>
-  <div class="todo-app">
+  <div class="todo-app" @scroll="handleScroll" style="overflow-y: auto; height: 100vh;">
     <NavBar @logout="handleLogout" @openDeletedTasks="showDeletedTasks = true" />
     <div class="task-list">
-      <TaskCard 
-        v-for="task in tasks" 
-        :key="task.id" 
-        :task="task"
-        @edit="openEditForm"
-        @delete="deleteTask"
-        @toggle="toggleTaskStatus"
-        @open="openTaskDetails"
-      />
+      <TaskCard v-for="task in tasks" :key="task.id" :task="task" @edit="openEditForm" @delete="deleteTask"
+        @toggle="toggleTaskStatus" @open="openTaskDetails" />
     </div>
     <button class="fab" @click="showAddTaskForm = true">
       <Plus class="icon" />
     </button>
-    <TaskPopup 
-      v-if="selectedTask"
-      :task="selectedTask"
-      @close="selectedTask = null"
-      @toggle="toggleTaskStatus"
-    />
-    <AddTaskForm 
-      v-if="showAddTaskForm"
-      :categories="categories"
-      @close="showAddTaskForm = false"
-      @add="addTask"
-      @addCategory="addCategory"
-    />
-    <EditTaskForm
-      v-if="editingTask"
-      :task="editingTask"
-      :categories="categories"
-      @close="editingTask = null"
-      @save="saveEditedTask"
-      @addCategory="addCategory"
-    />
-    <DeletedTasks
-      v-if="showDeletedTasks"
-      :deletedTasks="deletedTasks"
-      @close="showDeletedTasks = false"
-      @restore="restoreTask"
-    />
+    <TaskPopup v-if="selectedTask" :task="selectedTask" @close="selectedTask = null" @toggle="toggleTaskStatus" />
+    <AddTaskForm v-if="showAddTaskForm" :categories="categories" @close="showAddTaskForm = false" @add="addTask"
+      @addCategory="addCategory" />
+    <EditTaskForm v-if="editingTask" :task="editingTask" :categories="categories" @close="editingTask = null"
+      @save="saveEditedTask" @addCategory="addCategory" />
+    <DeletedTasks v-if="showDeletedTasks" :deletedTasks="deletedTasks" @close="showDeletedTasks = false"
+      @restore="restoreTask" @load-more="loadMoreDeletedTasks" />
   </div>
 </template>
 
@@ -57,14 +30,22 @@ import AddTaskForm from './AddTaskForm.vue'
 import EditTaskForm from './EditTaskForm.vue'
 import DeletedTasks from './DeletedTasks.vue'
 
-const router = useRouter()
-const tasks = ref([])
-const deletedTasks = ref([])
-const selectedTask = ref(null)
-const showAddTaskForm = ref(false)
-const showDeletedTasks = ref(false)
-const editingTask = ref(null)
-const categories = ref([])
+const router = useRouter();
+const tasks = ref([]);
+const deletedTasks = ref([]);
+const selectedTask = ref(null);
+const showAddTaskForm = ref(false);
+const showDeletedTasks = ref(false);
+const editingTask = ref(null);
+const categories = ref([]);
+const currentPage = ref(1);
+const totalPages = ref(null);
+const isLoading = ref(false);
+const hasMoreTasks = ref(true);
+const currentPageDeletedTasks = ref(1); 
+const totalPagesDeletedTasks = ref(null);
+const isLoadingDeletedTasks = ref(false);
+const hasMoreDeletedTasks = ref(true);
 
 import { onMounted } from 'vue';
 
@@ -86,37 +67,82 @@ const getAuthTokenFromCookies = () => {
 };
 
 const fetchTasks = async () => {
+  if (isLoading.value || !hasMoreTasks.value) return;
+
   try {
-    const response = await axios.get('/tasks');
-    tasks.value = response.data.data;  // Adjust to match the paginated structure
+    isLoading.value = true;
+    const token = getAuthTokenFromCookies();
+    if (!token) throw new Error('Token is missing or expired.');
+
+    const response = await axios.get(`/tasks?page=${currentPage.value}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    tasks.value = [...tasks.value, ...response.data.data];
+    totalPages.value = response.data.last_page;
+
+    if (currentPage.value >= totalPages.value) hasMoreTasks.value = false;
+
+    currentPage.value++;
   } catch (error) {
-    console.error("Error fetching tasks:", error);
+    console.error('Error fetching tasks:', error);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const handleScroll = (event) => {
+  const target = event.target;
+  if (target.scrollHeight - target.scrollTop <= target.clientHeight + 100) {
+    fetchTasks();
   }
 };
 
 const fetchCategories = async () => {
   try {
-    const response = await axios.get('/categories');
-    categories.value = response.data.data;  // Adjust to match the categories structure
+
+    const response = await axios.get('/categories',);
+    categories.value = response.data.categories;
+    console.log(categories.value);
+    // Adjust to match the categories structure
   } catch (error) {
     console.error("Error fetching categories:", error);
   }
 };
 
 const fetchDeletedTasks = async () => {
+  if (isLoadingDeletedTasks.value || !hasMoreDeletedTasks.value) return;
+
   try {
-    const response = await axios.get('/tasks/deleted');
-    deletedTasks.value = response.data.data;  // Adjust to match the paginated structure
+    isLoadingDeletedTasks.value = true;
+    const token = getAuthTokenFromCookies();
+    if (!token) throw new Error('Token is missing or expired.');
+
+    const response = await axios.get(`/tasks/deleted?page=${currentPageDeletedTasks.value}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const { data, last_page } = response.data;
+    deletedTasks.value = [...deletedTasks.value, ...data];
+    totalPagesDeletedTasks.value = last_page;
+
+    if (currentPageDeletedTasks.value >= totalPagesDeletedTasks.value) hasMoreDeletedTasks.value = false;
+    currentPageDeletedTasks.value++;
   } catch (error) {
-    console.error("Error fetching deleted tasks:", error);
+    console.error('Error fetching deleted tasks:', error);
+  } finally {
+    isLoadingDeletedTasks.value = false;
   }
+};
+const loadMoreDeletedTasks = () => {
+  fetchDeletedTasks();
 };
 
 const handleLogout = () => {
   if (confirm('Are you sure you want to log out?')) {
     // Clear the auth_token cookie
     document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;';
-    
+
     // Navigate to the home page
     router.push('/');
   }
@@ -124,8 +150,19 @@ const handleLogout = () => {
 
 const addTask = async (newTask) => {
   try {
-    const response = await axios.post('/tasks', newTask);
-    tasks.value.push(response.data.task); // Add the new task to the local tasks list
+    const token = getAuthTokenFromCookies();
+    if (!token) {
+      throw new Error('Token is missing or expired.');
+    }
+    console.log(newTask);
+    // Send the API request with the token in the Authorization header
+    const response = await axios.post('/tasks',
+      {
+        title: newTask.title, categoryId: newTask.categoryId, description: newTask.description, dueDate: newTask.dueDate
+
+      },);
+      tasks.value.push(response.data.task);
+    fetchTasks();
   } catch (error) {
     console.error("Error adding task:", error);
   }
@@ -138,17 +175,27 @@ const openEditForm = (taskId) => {
   }
 };
 
-const saveEditedTask = (updatedTask) => {
+const saveEditedTask = async(updatedTask) => {
   const index = tasks.value.findIndex(task => task.id === updatedTask.id);
   if (index !== -1) {
     tasks.value[index] = updatedTask;
+    const response = await axios.put(`/tasks/${updatedTask.id}`,
+      {
+        title: updatedTask.title, categoryId: updatedTask.categoryId, description: updatedTask.description, dueDate: updatedTask.dueDate
+      },);
   }
   editingTask.value = null;
 };
 
 const deleteTask = async (taskId) => {
   try {
-    await axios.delete(`/tasks/${taskId}`);
+    const token = getAuthTokenFromCookies();
+    if (!token) throw new Error('Token is missing or expired.');
+    await axios.delete(`/tasks/${taskId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`, // Attach the token
+      }
+    });
     const taskIndex = tasks.value.findIndex(task => task.id === taskId);
     if (taskIndex !== -1) {
       const deletedTask = tasks.value.splice(taskIndex, 1)[0];
@@ -161,10 +208,17 @@ const deleteTask = async (taskId) => {
 
 const toggleTaskStatus = async (taskId) => {
   try {
-    const response = await axios.put(`/tasks/${taskId}/toggle-status`);
+    const token = getAuthTokenFromCookies();
+    if (!token) throw new Error('Token is missing or expired.');
+    const response = await axios.put(`/tasks/${taskId}/toggle-status`, {
+      headers: {
+        'Authorization': `Bearer ${token}`, // Attach the token
+      }
+    });
+
     const task = tasks.value.find(task => task.id === taskId);
     if (task) {
-      task.status = response.data.status; // Update status locally
+      task.status = response.data.task.status; // Update status locally
     }
   } catch (error) {
     console.error("Error toggling task status:", error);
@@ -181,6 +235,7 @@ const restoreTask = async (taskId) => {
     const taskIndex = deletedTasks.value.findIndex(task => task.id === taskId);
     if (taskIndex !== -1) {
       const restoredTask = deletedTasks.value.splice(taskIndex, 1)[0];
+      restoredTask.status = response.data.task.status;
       tasks.value.push(restoredTask); // Restore task to the main list
     }
   } catch (error) {
@@ -192,7 +247,6 @@ const addCategory = async (newCategory) => {
   try {
     // Get the token from cookies
     const token = getAuthTokenFromCookies();
-    console.log(token);
     if (!token) {
       throw new Error('Token is missing or expired.');
     }
@@ -253,4 +307,3 @@ const addCategory = async (newCategory) => {
   height: 24px;
 }
 </style>
-

@@ -20,7 +20,7 @@ return [
 
     'guards' => [
         'api' => [
-            'driver' => 'passport',
+            'driver' => 'sanctum', // Change this to sanctum
             'provider' => 'users',
         ],
     ],

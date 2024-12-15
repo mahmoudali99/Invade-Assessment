@@ -9,10 +9,10 @@
       <div class="form-group category-group">
         <label for="category">Category</label>
         <div class="category-input-group">
-          <select id="category" v-model="editedTask.category">
+          <select id="category" v-model="editedTask.categoryId">
             <option value="">Select a category</option>
-            <option v-for="category in categories" :key="category" :value="category">
-              {{ category }}
+            <option v-for="category in categories" :key="category.id" :value="category.id">
+              {{ category.title }}
             </option>
           </select>
           <button type="button" class="icon-button" @click="showAddCategory = true">
@@ -48,6 +48,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { Plus, Check } from 'lucide-vue-next'
+
 
 const props = defineProps({
   task: {

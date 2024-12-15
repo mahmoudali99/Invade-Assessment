@@ -94,7 +94,7 @@ export default {
           const token = response.data.token; // Assuming the token is returned in `response.data.token`
 
           // Store the token in cookies
-          document.cookie = `auth_token=${token.accessToken};path=/;secure;samesite=lax`;
+          document.cookie = `auth_token=${token};path=/;secure;samesite=lax`;
           console.log('Token stored in cookies:', token);
 
           // Navigate to /todos

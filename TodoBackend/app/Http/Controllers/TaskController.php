@@ -13,7 +13,7 @@ class TaskController extends Controller
         $user = $request->user();
 
         // Retrieve tasks for the authenticated user, excluding deleted ones
-        $tasks = Task::where('user_id', $user->id) // assuming 'user_id' column is used for the relationship
+        $tasks = Task::where('userId', $user->id) // assuming 'user_id' column is used for the relationship
                      ->where('status', '!=', 'deleted')
                      ->paginate(10);
 
@@ -29,10 +29,11 @@ class TaskController extends Controller
         ]);
 
         $task = Task::create([
-            'user_id' => $request->user()->id,
-            'category_id' => $request->categoryId,
+            'userId' => $request->user()->id,
+            'categoryId' => $request->categoryId,
             'title' => $request->title,
             'description' => $request->description,
+            'dueDate' => $request->dueDate,
             'status' => 'pending',
         ]);
 
@@ -49,7 +50,7 @@ class TaskController extends Controller
             'status' => 'nullable|in:pending,completed',
         ]);
 
-        $task->update($request->only(['title', 'description', 'status']));
+        $task->update($request->all());
         return response()->json(['message' => 'Task updated successfully', 'task' => $task]);
     }
 
@@ -79,7 +80,7 @@ class TaskController extends Controller
 
     public function getDeletedTasks(Request $request)
     {
-        $tasks = Task::where('status', 'deleted')->paginate(10);
+        $tasks = Task::where('status', 'deleted')->where('userId', $request->user()->id)->paginate(10);
         return response()->json($tasks);
     }
 
@@ -91,5 +92,9 @@ class TaskController extends Controller
 
         $category = Category::create($request->all());
         return response()->json(['message' => 'Category added successfully', 'category' => $category]);
+    }
+    public function getCategories(Request $request) {
+        $categories = Category::all();
+        return response()->json(['categories' => $categories]);
     }
 }
